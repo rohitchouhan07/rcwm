@@ -4,13 +4,40 @@
 #include <X11/xlib.h>
 #include <signal.h>
 
+
+// Taken from DWM. Many thanks. https://git.suckless.org/dwm
+#define mod_clean(mask) (mask & ~(numlock|LockMask) & \
+        (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
+        
 //variables
 static display *disp;
 static int screen;
 static Window root;
 static int sw, sh, numlock = 0;
 
+//events array
+static void (*events[LASTEvent])(XEvent *e) = {
+    [ConfigureRequest] = configure_request,
+    [KeyPress]         = key_press,
+    [MapRequest]       = map_request,
+    [MappingNotify]    = mapping_notify,
+    [DestroyNotify]    = notify_destroy,
+    [EnterNotify]      = notify_enter,
+    [MotionNotify]     = notify_motion
+};
+
 //functions
+
+//keypress event handler
+void key_press(XEvent *e) {
+    KeySym keysym = XkbKeycodeToKeysym(d, e->xkey.keycode, 0, 0);
+
+    for (unsigned int i=0; i < sizeof(keys)/sizeof(*keys); ++i)
+        if (keys[i].keysym == keysym &&
+            mod_clean(keys[i].mod) == mod_clean(e->xkey.state))
+            keys[i].function(keys[i].arg);
+}
+
 void grabkeys(Window root){
 	unsigned int i, j, modifiers[] = {0, LockMask, numlock, numlock|LockMask};
     XModifierKeymap *modmap = XGetModifierMapping(disp);
