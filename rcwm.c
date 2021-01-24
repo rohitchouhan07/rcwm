@@ -1,27 +1,42 @@
 /* rc's window manager */
 
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#include <X11/XF86keysym.h>
 #include <stdio.h>
-#include <X11/xlib.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include <signal.h>
-
+#include <sys/wait.h>
 
 // Taken from DWM. Many thanks. https://git.suckless.org/dwm
 #define mod_clean(mask) (mask & ~(numlock|LockMask) & \
         (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
         
-        
+#define TABLENGTH(X)    (sizeof(X)/sizeof(*X))
         
 typedef struct desktop{
 	client *head;
 	client *current;
 }desktop;
 
+typedef struct client{
+	client *next;
+	client *prev;
+	
+	Window win;
+}
 //variables
 static display *disp;
 static int screen;
 static Window root;
 static int sw, sh, numlock = 0;
+static int master_size;
 static desktop desktops[10];
+static int current_desktop = 1;
+static client *head;
+static client *current;
+
 //events array
 static void (*events[LASTEvent])(XEvent *e) = {
     [ConfigureRequest] = configure_request,
@@ -91,6 +106,22 @@ void spawn(const Arg arg) {
     execvp((char*)arg.com[0], (char**)arg.com);
 }
 
+void maprequest(XEvent *e) {
+    XMapRequestEvent *ev = &e->xmaprequest;
+
+    // For fullscreen mplayer (and maybe some other program)
+    client *c;
+    for(c=head;c;c=c->next)
+        if(ev->window == c->win) {
+            XMapWindow(dis,ev->window);
+            return;
+        }
+
+    add_window(ev->window);
+    XMapWindow(dis,ev->window);
+    tile();
+    update_current();
+}
 
 int main(void){
 	
@@ -109,10 +140,23 @@ int main(void){
 	sh = XDisplayHeight(disp, screen);
 	sw = XDisplayWidth(disp, screen);
 	
+	master_size = sw*0.6;
+	
 	//grabbing input
 	XSelectInput(disp, root, SubstructureRedirectMask);
 	grabkeys(root);
 	
+	 // List of client
+    head = NULL;
+    current = NULL;
+
+    // Set up all desktop
+    int i;
+    for(i=0;i<TABLENGTH(desktops);++i) {
+        desktops[i].head = head;
+        desktops[i].current = current;
+    }
+    
 	//event loop
 	while (1 && !XNextEvent(d, &ev)) // 1 && will forever be here.
 		if (events[ev.type]) events[ev.type](&ev);
