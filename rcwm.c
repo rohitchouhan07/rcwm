@@ -9,21 +9,25 @@
 #define mod_clean(mask) (mask & ~(numlock|LockMask) & \
         (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
         
+        
+        
+typedef struct desktop{
+	client *head;
+	client *current;
+}desktop;
+
 //variables
 static display *disp;
 static int screen;
 static Window root;
 static int sw, sh, numlock = 0;
-
+static desktop desktops[10];
 //events array
 static void (*events[LASTEvent])(XEvent *e) = {
     [ConfigureRequest] = configure_request,
     [KeyPress]         = key_press,
     [MapRequest]       = map_request,
-    [MappingNotify]    = mapping_notify,
     [DestroyNotify]    = notify_destroy,
-    [EnterNotify]      = notify_enter,
-    [MotionNotify]     = notify_motion
 };
 
 //functions
@@ -65,6 +69,28 @@ void grabkeys(Window root){
 
     XFreeModifiermap(modmap);
 }
+
+void configure_request(XEvent *e) {
+    XConfigureRequestEvent *ev = &e->xconfigurerequest;
+
+    XConfigureWindow(d, ev->window, ev->value_mask, &(XWindowChanges) {
+        .x          = ev->x,
+        .y          = ev->y,
+        .width      = ev->width,
+        .height     = ev->height,
+        .sibling    = ev->above,
+        .stack_mode = ev->detail
+    });
+}
+
+void spawn(const Arg arg) {
+    if (fork()) return;
+    if (disp) close(ConnectionNumber(disp));
+
+    setsid();
+    execvp((char*)arg.com[0], (char**)arg.com);
+}
+
 
 int main(void){
 	
