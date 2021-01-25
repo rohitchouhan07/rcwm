@@ -40,6 +40,7 @@ typedef struct client{
 typedef struct desktop{
 	client *tail;
 	client *current;
+	client *head;
 }desktop;
 
 
@@ -88,8 +89,14 @@ void add_window(Window w) {
 
         t->next = c;
     }
-
+	tail = c;
     current = c;
+}
+
+void notify_destroy(XEvent *e) {
+    delete_window(e->xdestroywindow.window);
+    tile();
+    update_current();
 }
 
 void change_desktop(const Arg arg) {
@@ -152,8 +159,7 @@ void next_desktop() {
 
 
 void save_desktop(int i) {
-    desktops[i].master_size = master_size;
-    desktops[i].mode = mode;
+    desktops[i].tail = tail;
     desktops[i].head = head;
     desktops[i].current = current;
 }
@@ -161,8 +167,7 @@ void save_desktop(int i) {
 void select_desktop(int i) {
     head = desktops[i].head;
     current = desktops[i].current;
-    master_size = desktops[i].master_size;
-    mode = desktops[i].mode;
+	tail = desktops[i].tail;
     current_desktop = i;
 }
 
@@ -234,12 +239,12 @@ void maprequest(XEvent *e) {
     client *c;
     for(c=head;c;c=c->next)
         if(ev->window == c->win) {
-            XMapWindow(dis,ev->window);
+            XMapWindow(disp,ev->window);
             return;
         }
 
     add_window(ev->window);
-    XMapWindow(dis,ev->window);
+    XMapWindow(disp,ev->window);
     tile();
     update_current();
 }
@@ -250,31 +255,22 @@ void tile() {
     int y = 0;
 
     // If only one window
-    if(head != NULL && head->next == NULL) {
+    if(tail != NULL && tail->prev == NULL) {
         XMoveResizeWindow(dis,head->win,0,0,sw-2,sh-2);
     }
-    else if(head != NULL) {
-        switch(mode) {
-            case 0:
+    else if(tail != NULL) {
+
                 // Master window
                 XMoveResizeWindow(dis,head->win,0,0,master_size-2,sh-2);
 
                 // Stack
-                for(c=head->next;c;c=c->next) ++n;
-                for(c=head->next;c;c=c->next) {
+                for(c=tail->prev;c;c=c->prev) ++n;
+                for(c=tail->prev;c;c=c->prev) {
                     XMoveResizeWindow(dis,c->win,master_size,y,sw-master_size-2,(sh/n)-2);
                     y += sh/n;
                 }
-                break;
-            case 1:
-                for(c=head;c;c=c->next) {
-                    XMoveResizeWindow(dis,c->win,0,0,sw,sh);
-                }
-                break;
-            default:
-                break;
-        }
-    }
+ 
+   
 }
 
 void update_current() {
@@ -283,13 +279,12 @@ void update_current() {
     for(c=head;c;c=c->next)
         if(current == c) {
             // "Enable" current window
-            XSetWindowBorderWidth(dis,c->win,1);
-            XSetWindowBorder(dis,c->win,win_focus);
-            XSetInputFocus(dis,c->win,RevertToParent,CurrentTime);
-            XRaiseWindow(dis,c->win);
+            XSetWindowBorderWidth(disp,c->win,1);
+            XSetInputFocus(disp,c->win,RevertToParent,CurrentTime);
+            XRaiseWindow(disp,c->win);
         }
         else
-            XSetWindowBorder(dis,c->win,win_unfocus);
+
 }
 
 int main(void){
