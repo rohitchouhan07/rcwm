@@ -35,7 +35,7 @@ typedef struct client{
 	client *prev;
 	
 	Window win;
-}
+}client;
        
 typedef struct desktop{
 	client *tail;
@@ -43,9 +43,27 @@ typedef struct desktop{
 	client *head;
 }desktop;
 
+// Functions
+static void add_window(Window w);
+static void change_desktop(const Arg arg);
+static void client_to_desktop(const Arg arg);
+static void configure_request(XEvent *e);
+static void destroynotify(XEvent *e);
+static void grabkeys();
+static void keypress(XEvent *e);
+static void kill_client();
+static void maprequest(XEvent *e);
+static void next_desktop();
+static void remove_window(Window w);
+static void save_desktop(int i);
+static void select_desktop(int i);
+static void spawn(const Arg arg);
+//static void swap();
+static void tile();
+static void update_current();
 
 //variables
-static display *disp;
+static Display *disp;
 static int screen;
 static Window root;
 static int sw, sh, numlock = 0;
@@ -91,12 +109,6 @@ void add_window(Window w) {
     }
 	tail = c;
     current = c;
-}
-
-void notify_destroy(XEvent *e) {
-    delete_window(e->xdestroywindow.window);
-    tile();
-    update_current();
 }
 
 void change_desktop(const Arg arg) {
@@ -145,6 +157,16 @@ void client_to_desktop(const Arg arg) {
     tile();
     update_current();
 }
+
+void notify_destroy(XEvent *e) {
+    remove_window(e->xdestroywindow.window);
+    tile();
+    update_current();
+}
+
+
+
+
 
 void next_desktop() {
     int tmp = current_desktop;
@@ -285,6 +307,46 @@ void update_current() {
         }
         else
 
+}
+
+void remove_window(Window w) {
+    client *c;
+
+    // CHANGE THIS UGLY CODE
+    for(c=head;c;c=c->next) {
+
+        if(c->win == w) {
+            if(c->prev == NULL && c->next == NULL) {
+                free(head);
+                head = NULL;
+                current = NULL;
+                tail = NULL;
+                return;
+            }
+
+            if(c->prev == NULL) {
+                head = c->next;
+                c->next->prev = NULL;
+                current = c->next;
+            }
+            else if(c->next == NULL) {
+                c->prev->next = NULL;
+                current = c->prev;
+                tail = c->prev;
+            }
+            else {
+                c->prev->next = c->next;
+                c->next->prev = c->prev;
+                current = c->prev;
+            }
+
+            free(c);
+            return;
+        }
+    }
+}
+void kill_client() {
+	if (current) XKillClient(disp, cur->w);
 }
 
 int main(void){
