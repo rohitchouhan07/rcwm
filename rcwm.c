@@ -9,7 +9,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-#include "rcwm.h"
+
 
 // Taken from DWM. Many thanks. https://git.suckless.org/dwm
 #define mod_clean(mask) (mask & ~(numlock|LockMask) & \
@@ -30,37 +30,41 @@ struct key {
     const Arg arg;
 };
 
-typedef struct client{
+typedef struct client client;
+struct client{
 	client *next;
 	client *prev;
-	
 	Window win;
-}client;
-       
-typedef struct desktop{
+};
+
+typedef struct desktop desktop;    
+struct desktop{
 	client *tail;
 	client *current;
 	client *head;
-}desktop;
+};
 
 // Functions
 static void add_window(Window w);
 static void change_desktop(const Arg arg);
 static void client_to_desktop(const Arg arg);
 static void configure_request(XEvent *e);
-static void destroynotify(XEvent *e);
+static void decrease();
 static void grabkeys();
-static void keypress(XEvent *e);
+static void increase();
+static void key_press(XEvent *e);
 static void kill_client();
-static void maprequest(XEvent *e);
+static void map_request(XEvent *e);
 static void next_desktop();
+static void notify_destroy(XEvent *e);
 static void remove_window(Window w);
 static void save_desktop(int i);
 static void select_desktop(int i);
 static void spawn(const Arg arg);
-//static void swap();
 static void tile();
 static void update_current();
+
+#include "config.h"
 
 //variables
 static Display *disp;
@@ -72,6 +76,7 @@ static desktop desktops[10];
 static int current_desktop = 1;
 static client *head;
 static client *current;
+static client *tail;
 
 //events array
 static void (*events[LASTEvent])(XEvent *e) = {
@@ -158,50 +163,24 @@ void client_to_desktop(const Arg arg) {
     update_current();
 }
 
-void notify_destroy(XEvent *e) {
-    remove_window(e->xdestroywindow.window);
-    tile();
-    update_current();
+void configure_request(XEvent *e) {
+    XConfigureRequestEvent *ev = &e->xconfigurerequest;
+
+    XConfigureWindow(disp, ev->window, ev->value_mask, &(XWindowChanges) {
+        .x          = ev->x,
+        .y          = ev->y,
+        .width      = ev->width,
+        .height     = ev->height,
+        .sibling    = ev->above,
+        .stack_mode = ev->detail
+    });
 }
 
-
-
-
-
-void next_desktop() {
-    int tmp = current_desktop;
-    if(tmp== 9)
-        tmp = 0;
-    else
-        tmp++;
-
-    Arg a = {.i = tmp};
-    change_desktop(a);
-}
-
-
-void save_desktop(int i) {
-    desktops[i].tail = tail;
-    desktops[i].head = head;
-    desktops[i].current = current;
-}
-
-void select_desktop(int i) {
-    head = desktops[i].head;
-    current = desktops[i].current;
-	tail = desktops[i].tail;
-    current_desktop = i;
-}
-
-
-//keypress event handler
-void key_press(XEvent *e) {
-    KeySym keysym = XkbKeycodeToKeysym(d, e->xkey.keycode, 0, 0);
-
-    for (unsigned int i=0; i < sizeof(keys)/sizeof(*keys); ++i)
-        if (keys[i].keysym == keysym &&
-            mod_clean(keys[i].mod) == mod_clean(e->xkey.state))
-            keys[i].function(keys[i].arg);
+void decrease() {
+    if(master_size > 50) {
+        master_size -= 10;
+        tile();
+    }
 }
 
 void grabkeys(Window root){
@@ -212,7 +191,7 @@ void grabkeys(Window root){
     for (i = 0; i < 8; i++)
         for (int k = 0; k < modmap->max_keypermod; k++)
             if (modmap->modifiermap[i * modmap->max_keypermod + k]
-                == XKeysymToKeycode(d, 0xff7f))
+                == XKeysymToKeycode(disp, 0xff7f))
                 numlock = (1 << i);
 
     XUngrabKey(disp, AnyKey, AnyModifier, root);
@@ -225,36 +204,35 @@ void grabkeys(Window root){
 
     for (i = 1; i < 4; i += 2)
         for (j = 0; j < sizeof(modifiers)/sizeof(*modifiers); j++)
-            XGrabButton(d, i, MOD | modifiers[j], root, True,
+            XGrabButton(disp, i, MOD | modifiers[j], root, True,
                 ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
                 GrabModeAsync, GrabModeAsync, 0, 0);
 
     XFreeModifiermap(modmap);
 }
 
-void configure_request(XEvent *e) {
-    XConfigureRequestEvent *ev = &e->xconfigurerequest;
-
-    XConfigureWindow(d, ev->window, ev->value_mask, &(XWindowChanges) {
-        .x          = ev->x,
-        .y          = ev->y,
-        .width      = ev->width,
-        .height     = ev->height,
-        .sibling    = ev->above,
-        .stack_mode = ev->detail
-    });
+void increase() {
+    if(master_size < sw-50) {
+        master_size += 10;
+        tile();
+    }
 }
 
-//spawn function
-void spawn(const Arg arg) {
-    if (fork()) return;
-    if (disp) close(ConnectionNumber(disp));
+//keypress event handler
+void key_press(XEvent *e) {
+    KeySym keysym = XkbKeycodeToKeysym(disp, e->xkey.keycode, 0, 0);
 
-    setsid();
-    execvp((char*)arg.com[0], (char**)arg.com);
+    for (unsigned int i=0; i < sizeof(keys)/sizeof(*keys); ++i)
+        if (keys[i].keysym == keysym &&
+            mod_clean(keys[i].mod) == mod_clean(e->xkey.state))
+            keys[i].function(keys[i].arg);
 }
 
-void maprequest(XEvent *e) {
+void kill_client() {
+	if (current) XKillClient(disp, current->win);
+}
+
+void map_request(XEvent *e) {
     XMapRequestEvent *ev = &e->xmaprequest;
 
     // For fullscreen mplayer (and maybe some other program)
@@ -271,42 +249,21 @@ void maprequest(XEvent *e) {
     update_current();
 }
 
-void tile() {
-    client *c;
-    int n = 0;
-    int y = 0;
+void next_desktop() {
+    int tmp = current_desktop;
+    if(tmp== 9)
+        tmp = 0;
+    else
+        tmp++;
 
-    // If only one window
-    if(tail != NULL && tail->prev == NULL) {
-        XMoveResizeWindow(dis,head->win,0,0,sw-2,sh-2);
-    }
-    else if(tail != NULL) {
-
-                // Master window
-                XMoveResizeWindow(dis,head->win,0,0,master_size-2,sh-2);
-
-                // Stack
-                for(c=tail->prev;c;c=c->prev) ++n;
-                for(c=tail->prev;c;c=c->prev) {
-                    XMoveResizeWindow(dis,c->win,master_size,y,sw-master_size-2,(sh/n)-2);
-                    y += sh/n;
-                }
- 
-   
+    Arg a = {.i = tmp};
+    change_desktop(a);
 }
 
-void update_current() {
-    client *c;
-
-    for(c=head;c;c=c->next)
-        if(current == c) {
-            // "Enable" current window
-            XSetWindowBorderWidth(disp,c->win,1);
-            XSetInputFocus(disp,c->win,RevertToParent,CurrentTime);
-            XRaiseWindow(disp,c->win);
-        }
-        else
-
+void notify_destroy(XEvent *e) {
+    remove_window(e->xdestroywindow.window);
+    tile();
+    update_current();
 }
 
 void remove_window(Window w) {
@@ -345,14 +302,72 @@ void remove_window(Window w) {
         }
     }
 }
-void kill_client() {
-	if (current) XKillClient(disp, cur->w);
+
+void save_desktop(int i) {
+    desktops[i].tail = tail;
+    desktops[i].head = head;
+    desktops[i].current = current;
 }
+
+void select_desktop(int i) {
+    head = desktops[i].head;
+    current = desktops[i].current;
+	tail = desktops[i].tail;
+    current_desktop = i;
+}
+
+//spawn function
+void spawn(const Arg arg) {
+    if (fork()) return;
+    if (disp) close(ConnectionNumber(disp));
+
+    setsid();
+    execvp((char*)arg.com[0], (char**)arg.com);
+}
+
+
+void tile() {
+    client *c;
+    int n = 0;
+    int y = 0;
+
+    // If only one window
+    if(tail != NULL && tail->prev == NULL) {
+        XMoveResizeWindow(disp,head->win,0,0,sw-2,sh-2);
+    }
+    else if(tail != NULL) {
+
+                // Master window
+                XMoveResizeWindow(disp,head->win,0,0,master_size-2,sh-2);
+
+                // Stack
+                for(c=tail->prev;c;c=c->prev) ++n;
+                for(c=tail->prev;c;c=c->prev) {
+                    XMoveResizeWindow(disp,c->win,master_size,y,sw-master_size-2,(sh/n)-2);
+                    y += sh/n;
+                }
+}
+   
+}
+
+void update_current() {
+    client *c;
+
+    for(c=head; c; c=c->next)
+        if(current == c) {
+            // "Enable" current window
+            XSetWindowBorderWidth(disp,c->win,1);
+            XSetInputFocus(disp,c->win,RevertToParent,CurrentTime);
+            XRaiseWindow(disp,c->win);
+        }
+
+}
+
 
 int main(void){
 	
 	//try to open the display
-	if(!disp = XOpenDisplay(0)){
+	if (!(disp = XOpenDisplay(0))){
 		fprintf(stdout, "cannot open display!!\n");
 		exit(1);
 	}
@@ -365,6 +380,7 @@ int main(void){
 	root = RootWindow(disp, screen);
 	sh = XDisplayHeight(disp, screen);
 	sw = XDisplayWidth(disp, screen);
+	XEvent ev;
 	
 	int master_size = sw*MASTER_SIZE;
 	
@@ -373,18 +389,20 @@ int main(void){
 	grabkeys(root);
 	
 	// List of client
+	head = NULL;
     tail = NULL;
     current = NULL;
 
     // Set up all desktop
     int i;
     for(i=0;i<TABLENGTH(desktops);++i) {
-        desktops[i].tail = head;
+        desktops[i].head = head;
         desktops[i].current = current;
+        desktops[i].tail = tail;
     }
     
 	//event loop
-	while (1 && !XNextEvent(d, &ev)) // 1 && will forever be here.
+	while (1 && !XNextEvent(disp, &ev)) // 1 && will forever be here.
 		if (events[ev.type]) events[ev.type](&ev);
 	
 	//close the display
