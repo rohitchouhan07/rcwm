@@ -9,16 +9,26 @@
 #include <signal.h>
 #include <sys/wait.h>
 
+#include "rcwm.h"
+
 // Taken from DWM. Many thanks. https://git.suckless.org/dwm
 #define mod_clean(mask) (mask & ~(numlock|LockMask) & \
         (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
         
 #define TABLENGTH(X)    (sizeof(X)/sizeof(*X))
-        
-typedef struct desktop{
-	client *head;
-	client *current;
-}desktop;
+
+//structs
+typedef union {
+    const char** com;
+    const int i;
+} Arg;
+
+struct key {
+    unsigned int mod;
+    KeySym keysym;
+    void (*function)(const Arg arg);
+    const Arg arg;
+};
 
 typedef struct client{
 	client *next;
@@ -26,6 +36,13 @@ typedef struct client{
 	
 	Window win;
 }
+       
+typedef struct desktop{
+	client *tail;
+	client *current;
+}desktop;
+
+
 //variables
 static display *disp;
 static int screen;
@@ -46,6 +63,109 @@ static void (*events[LASTEvent])(XEvent *e) = {
 };
 
 //functions
+
+//add window
+void add_window(Window w) {
+    client *c,*t;
+
+    if(!(c = (client *)calloc(1,sizeof(client)))){
+        fprintf(stdout, "rcwm: cannot open display!!\n");
+		exit(1);
+	}
+
+    if(head == NULL) {
+        c->next = NULL;
+        c->prev = NULL;
+        c->win = w;
+        head = c;
+    }
+    else {
+        for(t=head;t->next;t=t->next);
+
+        c->next = NULL;
+        c->prev = t;
+        c->win = w;
+
+        t->next = c;
+    }
+
+    current = c;
+}
+
+void change_desktop(const Arg arg) {
+    client *c;
+
+    if(arg.i == current_desktop)
+        return;
+
+    // Unmap all window
+    if(head != NULL)
+        for(c=head;c;c=c->next)
+            XUnmapWindow(disp,c->win);
+
+    // Save current "properties"
+    save_desktop(current_desktop);
+
+    // Take "properties" from the new desktop
+    select_desktop(arg.i);
+
+
+    // Map all windows
+    if(head != NULL)
+        for(c=head;c;c=c->next)
+            XMapWindow(disp,c->win);
+
+    tile();
+    update_current();
+}
+
+void client_to_desktop(const Arg arg) {
+    client *tmp = current;
+    int tmp2 = current_desktop;
+    
+    if(arg.i == current_desktop || current == NULL)
+        return;
+
+    // Add client to desktop
+    select_desktop(arg.i);
+    add_window(tmp->win);
+    save_desktop(arg.i);
+
+    // Remove client from current desktop
+    select_desktop(tmp2);
+    remove_window(current->win);
+
+    tile();
+    update_current();
+}
+
+void next_desktop() {
+    int tmp = current_desktop;
+    if(tmp== 9)
+        tmp = 0;
+    else
+        tmp++;
+
+    Arg a = {.i = tmp};
+    change_desktop(a);
+}
+
+
+void save_desktop(int i) {
+    desktops[i].master_size = master_size;
+    desktops[i].mode = mode;
+    desktops[i].head = head;
+    desktops[i].current = current;
+}
+
+void select_desktop(int i) {
+    head = desktops[i].head;
+    current = desktops[i].current;
+    master_size = desktops[i].master_size;
+    mode = desktops[i].mode;
+    current_desktop = i;
+}
+
 
 //keypress event handler
 void key_press(XEvent *e) {
@@ -98,6 +218,7 @@ void configure_request(XEvent *e) {
     });
 }
 
+//spawn function
 void spawn(const Arg arg) {
     if (fork()) return;
     if (disp) close(ConnectionNumber(disp));
@@ -123,6 +244,54 @@ void maprequest(XEvent *e) {
     update_current();
 }
 
+void tile() {
+    client *c;
+    int n = 0;
+    int y = 0;
+
+    // If only one window
+    if(head != NULL && head->next == NULL) {
+        XMoveResizeWindow(dis,head->win,0,0,sw-2,sh-2);
+    }
+    else if(head != NULL) {
+        switch(mode) {
+            case 0:
+                // Master window
+                XMoveResizeWindow(dis,head->win,0,0,master_size-2,sh-2);
+
+                // Stack
+                for(c=head->next;c;c=c->next) ++n;
+                for(c=head->next;c;c=c->next) {
+                    XMoveResizeWindow(dis,c->win,master_size,y,sw-master_size-2,(sh/n)-2);
+                    y += sh/n;
+                }
+                break;
+            case 1:
+                for(c=head;c;c=c->next) {
+                    XMoveResizeWindow(dis,c->win,0,0,sw,sh);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void update_current() {
+    client *c;
+
+    for(c=head;c;c=c->next)
+        if(current == c) {
+            // "Enable" current window
+            XSetWindowBorderWidth(dis,c->win,1);
+            XSetWindowBorder(dis,c->win,win_focus);
+            XSetInputFocus(dis,c->win,RevertToParent,CurrentTime);
+            XRaiseWindow(dis,c->win);
+        }
+        else
+            XSetWindowBorder(dis,c->win,win_unfocus);
+}
+
 int main(void){
 	
 	//try to open the display
@@ -140,20 +309,20 @@ int main(void){
 	sh = XDisplayHeight(disp, screen);
 	sw = XDisplayWidth(disp, screen);
 	
-	master_size = sw*0.6;
+	int master_size = sw*MASTER_SIZE;
 	
 	//grabbing input
 	XSelectInput(disp, root, SubstructureRedirectMask);
 	grabkeys(root);
 	
-	 // List of client
-    head = NULL;
+	// List of client
+    tail = NULL;
     current = NULL;
 
     // Set up all desktop
     int i;
     for(i=0;i<TABLENGTH(desktops);++i) {
-        desktops[i].head = head;
+        desktops[i].tail = head;
         desktops[i].current = current;
     }
     
