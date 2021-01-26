@@ -73,10 +73,11 @@ static Window root;
 static int sw, sh, numlock = 0;
 static int master_size;
 static desktop desktops[10];
-static int current_desktop = 1;
+static int current_desktop;
 static client *head;
 static client *current;
 static client *tail;
+static int master_size;
 
 //events array
 static void (*events[LASTEvent])(XEvent *e) = {
@@ -230,6 +231,8 @@ void key_press(XEvent *e) {
 
 void kill_client() {
 	if (current) XKillClient(disp, current->win);
+	tile();
+	update_current();
 }
 
 void map_request(XEvent *e) {
@@ -287,9 +290,9 @@ void remove_window(Window w) {
                 current = c->next;
             }
             else if(c->next == NULL) {
+                tail = c->prev;
                 c->prev->next = NULL;
                 current = c->prev;
-                tail = c->prev;
             }
             else {
                 c->prev->next = c->next;
@@ -338,7 +341,7 @@ void tile() {
     else if(tail != NULL) {
 
                 // Master window
-                XMoveResizeWindow(disp,head->win,0,0,master_size-2,sh-2);
+                XMoveResizeWindow(disp,tail->win,0,0, master_size - 2,sh - 2);
 
                 // Stack
                 for(c=tail->prev;c;c=c->prev) ++n;
@@ -382,8 +385,13 @@ int main(void){
 	sw = XDisplayWidth(disp, screen);
 	XEvent ev;
 	
-	int master_size = sw*MASTER_SIZE;
-	
+	master_size = sw*MASTER_SIZE;
+	// Select first dekstop by default
+    const Arg arg = {.i = 1};
+    current_desktop = arg.i;
+    change_desktop(arg);
+    
+    // To catch maprequest and destroynotify (if other wm running)
 	//grabbing input
 	XSelectInput(disp, root, SubstructureRedirectMask);
 	grabkeys(root);
