@@ -25,6 +25,7 @@ static struct key keys[] = {
     {  MOD,             XK_h,                       decrease,       {NULL}},
     {  MOD,             XK_l,                       increase,       {NULL}},
     {  MOD,             XK_x,                       kill_client,    {NULL}},
+    {  MOD,             XK_k,                       prev_win,       {NULL}},
     {  MOD,             XK_c,                       spawn,          {.com = lockcmd}},
     {  0,               XF86XK_AudioNext,           spawn,          {.com = next}},
     {  0,               XF86XK_AudioPrev,           spawn,          {.com = prev}},

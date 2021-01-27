@@ -57,6 +57,7 @@ static void kill_client();
 static void map_request(XEvent *e);
 static void next_desktop();
 static void notify_destroy(XEvent *e);
+static void prev_win();
 static void remove_window(Window w);
 static void save_desktop(int i);
 static void select_desktop(int i);
@@ -153,15 +154,17 @@ void client_to_desktop(const Arg arg) {
 
     // Add client to desktop
     select_desktop(arg.i);
-    add_window(tmp->win);
+    add_window(tmp->win);	
     save_desktop(arg.i);
 
     // Remove client from current desktop
     select_desktop(tmp2);
     remove_window(current->win);
-
+    XUnmapWindow(disp, current->w);
+    save_desktop(tmp2);
+	update_current();
     tile();
-    update_current();
+    
 }
 
 void configure_request(XEvent *e) {
@@ -264,7 +267,20 @@ void next_desktop() {
 }
 
 void notify_destroy(XEvent *e) {
-    remove_window(e->xdestroywindow.window);
+        int i=0;
+    client *c;
+    XDestroyWindowEvent *ev = &e->xdestroywindow;
+
+    // Uber (and ugly) hack ;) Lets see if this works
+    for(c=head;c;c=c->next)
+        if(ev->window == c->win)
+            i++;
+    
+    // End of the hack
+    if(i == 0)
+        return;
+
+    remove_window(ev->window);
     tile();
     update_current();
 }
@@ -303,6 +319,20 @@ void remove_window(Window w) {
             free(c);
             return;
         }
+    }
+}
+
+void prev_win() {
+    client *c;
+
+    if(current != NULL && head != NULL) {
+        if(current->prev == NULL)
+            for(c=head;c->next;c=c->next);
+        else
+            c = current->prev;
+
+        current = c;
+        update_current();
     }
 }
 
@@ -356,10 +386,10 @@ void tile() {
 void update_current() {
     client *c;
 
-    for(c=head; c; c=c->next)
+    for(c = head; c; c = c->next)
         if(current == c) {
             // "Enable" current window
-            XSetWindowBorderWidth(disp,c->win,1);
+            //XSetWindowBorderWidth(disp,c->win,1);
             XSetInputFocus(disp,c->win,RevertToParent,CurrentTime);
             XRaiseWindow(disp,c->win);
         }
@@ -394,6 +424,7 @@ int main(void){
     // To catch maprequest and destroynotify (if other wm running)
 	//grabbing input
 	XSelectInput(disp, root, SubstructureRedirectMask);
+	XDefineCursor(d, root, XCreateFontCursor(d, 68));
 	grabkeys(root);
 	
 	// List of client
