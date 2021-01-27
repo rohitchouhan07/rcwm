@@ -61,6 +61,7 @@ static void prev_win();
 static void remove_window(Window w);
 static void save_desktop(int i);
 static void select_desktop(int i);
+static int 	send_kill_signal(Client *c, Atom proto);
 static void spawn(const Arg arg);
 static void tile();
 static void update_current();
@@ -160,7 +161,7 @@ void client_to_desktop(const Arg arg) {
     // Remove client from current desktop
     select_desktop(tmp2);
     remove_window(current->win);
-    XUnmapWindow(disp, current->w);
+    XUnmapWindow(disp, current->win);
     save_desktop(tmp2);
 	update_current();
     tile();
@@ -232,10 +233,15 @@ void key_press(XEvent *e) {
             keys[i].function(keys[i].arg);
 }
 
-void kill_client() {
-	if (current) XKillClient(disp, current->win);
-	tile();
-	update_current();
+void kill_client()
+{
+	if (!send_kill_signal(selmon->sel, wmatom[WMDelete])) {
+		XGrabServer(disp);
+		XSetCloseDownMode(disp, DestroyAll);
+		XKillClient(disp, current->win);
+		XSync(disp, False);
+		XUngrabServer(disp);
+	}
 }
 
 void map_request(XEvent *e) {
@@ -267,7 +273,7 @@ void next_desktop() {
 }
 
 void notify_destroy(XEvent *e) {
-        int i=0;
+    int i=0;
     client *c;
     XDestroyWindowEvent *ev = &e->xdestroywindow;
 
@@ -281,8 +287,9 @@ void notify_destroy(XEvent *e) {
         return;
 
     remove_window(ev->window);
-    tile();
     update_current();
+    tile();
+    
 }
 
 void remove_window(Window w) {
@@ -347,6 +354,30 @@ void select_desktop(int i) {
     current = desktops[i].current;
 	tail = desktops[i].tail;
     current_desktop = i;
+}
+
+int send_kill_signal(Client *c, Atom proto)
+{
+	int n;
+	Atom *protocols;
+	int exists = 0;
+	XEvent ev;
+
+	if (XGetWMProtocols(disp, c->win, &protocols, &n)) {
+		while (!exists && n--)
+			exists = protocols[n] == proto;
+		XFree(protocols);
+	}
+	if (exists) {
+		ev.type = ClientMessage;
+		ev.xclient.window = c->win;
+		ev.xclient.message_type = wmatom[WMProtocols];
+		ev.xclient.format = 32;
+		ev.xclient.data.l[0] = proto;
+		ev.xclient.data.l[1] = CurrentTime;
+		XSendEvent(disp, c->win, False, NoEventMask, &ev);
+	}
+	return exists;
 }
 
 //spawn function
@@ -424,7 +455,7 @@ int main(void){
     // To catch maprequest and destroynotify (if other wm running)
 	//grabbing input
 	XSelectInput(disp, root, SubstructureRedirectMask);
-	XDefineCursor(d, root, XCreateFontCursor(d, 68));
+	XDefineCursor(disp, root, XCreateFontCursor(disp, 68));
 	grabkeys(root);
 	
 	// List of client
