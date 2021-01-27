@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <X11/Xatom.h>
+#include <X11/Xproto.h>
+#include <X11/Xutil.h>
 
 
 
@@ -61,7 +64,7 @@ static void prev_win();
 static void remove_window(Window w);
 static void save_desktop(int i);
 static void select_desktop(int i);
-static int 	send_kill_signal(Client *c, Atom proto);
+static void	send_kill_signal(Window win);
 static void spawn(const Arg arg);
 static void tile();
 static void update_current();
@@ -235,13 +238,11 @@ void key_press(XEvent *e) {
 
 void kill_client()
 {
-	if (!send_kill_signal(selmon->sel, wmatom[WMDelete])) {
-		XGrabServer(disp);
-		XSetCloseDownMode(disp, DestroyAll);
-		XKillClient(disp, current->win);
-		XSync(disp, False);
-		XUngrabServer(disp);
-	}
+    if(head == NULL) return;
+    send_kill_signal(current->win);
+    remove_window(current->win);
+    tile();
+    update_current();
 }
 
 void map_request(XEvent *e) {
@@ -356,28 +357,10 @@ void select_desktop(int i) {
     current_desktop = i;
 }
 
-int send_kill_signal(Client *c, Atom proto)
+void send_kill_signal(Window win)
 {
-	int n;
-	Atom *protocols;
-	int exists = 0;
-	XEvent ev;
-
-	if (XGetWMProtocols(disp, c->win, &protocols, &n)) {
-		while (!exists && n--)
-			exists = protocols[n] == proto;
-		XFree(protocols);
-	}
-	if (exists) {
-		ev.type = ClientMessage;
-		ev.xclient.window = c->win;
-		ev.xclient.message_type = wmatom[WMProtocols];
-		ev.xclient.format = 32;
-		ev.xclient.data.l[0] = proto;
-		ev.xclient.data.l[1] = CurrentTime;
-		XSendEvent(disp, c->win, False, NoEventMask, &ev);
-	}
-	return exists;
+	if(current)
+		XKillClient(disp, win);
 }
 
 //spawn function
