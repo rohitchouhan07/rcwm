@@ -164,17 +164,16 @@ void client_to_desktop(const Arg arg) {
     client *tmp = current;
     int tmp2 = current_desktop;
     
-    // Remove client from current desktop
-    XUnmapWindow(disp, current->win);
-    remove_window(current->win);
     // Add client to desktop
     select_desktop(arg.i);
     add_window(tmp->win);	
     save_desktop(arg.i);
-
-    // Remove client from current desktop
+       
     select_desktop(tmp2);
-    save_desktop(tmp2);
+    // Remove client from current desktop
+    remove_window(current->win);
+	save_desktop(tmp2);
+    
     select_desktop(arg.i);
 	update_current();
     tile();
