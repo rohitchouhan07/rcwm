@@ -168,13 +168,13 @@ void client_to_desktop(const Arg arg) {
 	
 	// Add client to desktop
     select_desktop(arg.i);
-    add_window(current->win);	
+    add_window(tmp->win);	
     save_desktop(arg.i);
        
     select_desktop(tmp2);
     // Remove client from current desktop
-    remove_window(current->win);
-    XUnmapWindow(disp, current->win);
+    remove_window(tmp->win);
+    XUnmapWindow(disp, tmp->win);
 	save_desktop(tmp2);
 	update_current();
     tile();
