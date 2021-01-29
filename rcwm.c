@@ -1,6 +1,7 @@
 /* rc's window manager */
 
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/keysym.h>
 #include <X11/XF86keysym.h>
 #include <stdio.h>
@@ -14,10 +15,8 @@
 
 
 
-// Taken from DWM. Many thanks. https://git.suckless.org/dwm
-#define mod_clean(mask) (mask & ~(numlock|LockMask) & \
-        (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
-        
+
+#define CLEANMASK(mask) (mask & ~(numlockmask | LockMask))
 #define TABLENGTH(X)    (sizeof(X)/sizeof(*X))
 
 //structs
@@ -75,7 +74,8 @@ static void update_current();
 static Display *disp;
 static int screen;
 static Window root;
-static int sw, sh, numlock = 0;
+static int sw, sh;
+unsigned int numlockmask;
 static int master_size;
 static desktop desktops[10];
 static int current_desktop;
@@ -123,10 +123,11 @@ void add_window(Window w) {
 }
 
 void change_desktop(const Arg arg) {
-    client *c;
+   if(arg.i == current_desktop)
+	return;
 
-    if(arg.i == current_desktop)
-        return;
+    client *c;
+	unsigned int tmp = current_desktop;
 
     // Unmap all window
     if(head != NULL)
@@ -142,10 +143,18 @@ void change_desktop(const Arg arg) {
 
     // Map all windows
     if(head != NULL)
-        for(c=head;c;c=c->next)
-            XMapWindow(disp,c->win);
+        for(c = head; c; c = c->next)
+            XMapWindow(disp, c->win);
 
     tile();
+    //update_current();
+    select_desktop(tmp);
+    // Unmap all window
+    if(head != NULL)
+        for(c = head; c; c = c->next)
+            XUnmapWindow(disp, c->win);
+
+    select_desktop(arg.i);
     update_current();
 }
 
@@ -191,32 +200,31 @@ void decrease() {
     }
 }
 
-void grabkeys(Window root){
-	unsigned int i, j, modifiers[] = {0, LockMask, numlock, numlock|LockMask};
-    XModifierKeymap *modmap = XGetModifierMapping(disp);
+void grabkeys(){
+	unsigned int i,j;
     KeyCode code;
 
-    for (i = 0; i < 8; i++)
-        for (int k = 0; k < modmap->max_keypermod; k++)
-            if (modmap->modifiermap[i * modmap->max_keypermod + k]
-                == XKeysymToKeycode(disp, 0xff7f))
-                numlock = (1 << i);
+    // numlock workaround
+    XModifierKeymap *modmap;
+    numlockmask = 0;
+    modmap = XGetModifierMapping(disp);
+    for (i=0;i<8;++i) {
+        for (j=0;j<modmap->max_keypermod;++j) {
+            if(modmap->modifiermap[i * modmap->max_keypermod + j] == XKeysymToKeycode(disp, XK_Num_Lock))
+                numlockmask = (1 << i);
+        }
+    }
+    XFreeModifiermap(modmap);
 
     XUngrabKey(disp, AnyKey, AnyModifier, root);
-
-    for (i = 0; i < sizeof(keys)/sizeof(*keys); i++)
-        if ((code = XKeysymToKeycode(disp, keys[i].keysym)))
-            for (j = 0; j < sizeof(modifiers)/sizeof(*modifiers); j++)
-                XGrabKey(disp, code, keys[i].mod | modifiers[j], root,
-                        True, GrabModeAsync, GrabModeAsync);
-
-    for (i = 1; i < 4; i += 2)
-        for (j = 0; j < sizeof(modifiers)/sizeof(*modifiers); j++)
-            XGrabButton(disp, i, MOD | modifiers[j], root, True,
-                ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
-                GrabModeAsync, GrabModeAsync, 0, 0);
-
-    XFreeModifiermap(modmap);
+    // For each shortcuts
+    for(i=0;i<TABLENGTH(keys);++i) {
+        code = XKeysymToKeycode(disp,keys[i].keysym);
+        XGrabKey(disp, code, keys[i].mod, root, True, GrabModeAsync, GrabModeAsync);
+        XGrabKey(disp, code, keys[i].mod | LockMask, root, True, GrabModeAsync, GrabModeAsync);
+        XGrabKey(disp, code, keys[i].mod | numlockmask, root, True, GrabModeAsync, GrabModeAsync);
+        XGrabKey(disp, code, keys[i].mod | numlockmask | LockMask, root, True, GrabModeAsync, GrabModeAsync);
+    }
 }
 
 void increase() {
@@ -228,12 +236,18 @@ void increase() {
 
 //keypress event handler
 void key_press(XEvent *e) {
-    KeySym keysym = XkbKeycodeToKeysym(disp, e->xkey.keycode, 0, 0);
+	unsigned int i;
+    KeySym keysym;
+    XKeyEvent *ev = &e->xkey;
 
-    for (unsigned int i=0; i < sizeof(keys)/sizeof(*keys); ++i)
-        if (keys[i].keysym == keysym &&
-            mod_clean(keys[i].mod) == mod_clean(e->xkey.state))
-            keys[i].function(keys[i].arg);
+    keysym = XkbKeycodeToKeysym(disp, (KeyCode)ev->keycode, 0, 0);
+    //fprintf(stderr, "pressed key %s\n", XKeysymToString(keysym));
+    for(i=0;i<TABLENGTH(keys); ++i) {
+        if(keysym == keys[i].keysym && CLEANMASK(keys[i].mod) == CLEANMASK(ev->state)) {
+            if(keys[i].function)
+                keys[i].function(keys[i].arg);
+        }
+    }
 }
 
 void kill_client()
@@ -437,7 +451,7 @@ int main(void){
     
     // To catch maprequest and destroynotify (if other wm running)
 	//grabbing input
-	XSelectInput(disp, root, SubstructureRedirectMask);
+	XSelectInput(disp, root, SubstructureNotifyMask|SubstructureRedirectMask);
 	XDefineCursor(disp, root, XCreateFontCursor(disp, 68));
 	grabkeys(root);
 	
