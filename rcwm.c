@@ -67,6 +67,7 @@ static void	send_kill_signal(Window win);
 static void spawn(const Arg arg);
 static void tile();
 static void update_current();
+static int xsendkill(Window w);
 
 #include "config.h"
 
@@ -129,17 +130,16 @@ void change_desktop(const Arg arg) {
     client *c;
 	unsigned int tmp = current_desktop;
 
-    // Unmap all window
-    if(head != NULL)
-        for(c=head;c;c=c->next)
-            XUnmapWindow(disp,c->win);
-
     // Save current "properties"
     save_desktop(current_desktop);
+    
+    // Unmap all window
+    if(head != NULL)
+        for(c = head; c; c = c->next)
+            XUnmapWindow(disp, c->win);
 
     // Take "properties" from the new desktop
     select_desktop(arg.i);
-
 
     // Map all windows
     if(head != NULL)
@@ -147,15 +147,11 @@ void change_desktop(const Arg arg) {
             XMapWindow(disp, c->win);
 
     tile();
-    //update_current();
+    update_current();
     select_desktop(tmp);
-    // Unmap all window
-    if(head != NULL)
-        for(c = head; c; c = c->next)
-            XUnmapWindow(disp, c->win);
+
 
     select_desktop(arg.i);
-    update_current();
 }
 
 void client_to_desktop(const Arg arg) {
@@ -254,10 +250,13 @@ void key_press(XEvent *e) {
 void kill_client()
 {
     if(head == NULL) return;
-    send_kill_signal(current->win);
-    remove_window(current->win);
-    tile();
-    update_current();
+    if (!xsendkill(current->win)){
+		XGrabServer(disp);
+		XSetCloseDownMode(disp, DestroyAll);
+		XKillClient(disp, current->win);
+		XSync(disp, False);
+		XUngrabServer(disp);
+	}
 }
 
 void map_request(XEvent *e) {
@@ -400,12 +399,12 @@ void tile() {
     else if(tail != NULL) {
 
                 // Master window
-                XMoveResizeWindow(disp,tail->win,0,0, master_size - 2,sh - 2);
+                XMoveResizeWindow(disp,tail->win,0,0, master_size ,sh );
 
                 // Stack
                 for(c=tail->prev;c;c=c->prev) ++n;
                 for(c=tail->prev;c;c=c->prev) {
-                    XMoveResizeWindow(disp,c->win,master_size,y,sw-master_size-2,(sh/n)-2);
+                    XMoveResizeWindow(disp,c->win,master_size,y,sw-master_size,(sh/n));
                     y += sh/n;
                 }
 }
@@ -423,6 +422,33 @@ void update_current() {
             XRaiseWindow(disp,c->win);
         }
 
+}
+
+int
+xsendkill(Window w){
+	int n;
+	Atom* protocols;
+	XEvent ev;
+	int exists = 0;
+	Atom destproto = XInternAtom(disp, "WM_DELETE_WINDOW", False);
+
+	if (XGetWMProtocols(disp, w, &protocols, &n)){
+		while (!exists && n--)
+			exists = (protocols[n] == destproto);
+		XFree(protocols);
+	}
+
+	if (exists){
+		ev.type = ClientMessage;
+		ev.xclient.window = w;
+		ev.xclient.message_type = XInternAtom(disp, "WM_PROTOCOLS", True);
+		ev.xclient.format = 32;
+		ev.xclient.data.l[0] = destproto;
+		ev.xclient.data.l[1] = CurrentTime;
+		XSendEvent(disp, w, False, NoEventMask, &ev);
+	}
+
+	return exists;
 }
 
 
