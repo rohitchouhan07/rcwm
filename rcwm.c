@@ -60,6 +60,7 @@ static void map_request(XEvent *e);
 static void next_desktop();
 static void notify_destroy(XEvent *e);
 static void notify_enter(XEvent *e) 
+static void prev_desktop();
 static void prev_win();
 static void remove_window(Window w);
 static void save_desktop(int i);
@@ -433,14 +434,16 @@ void tile() {
 void update_current() {
     client *c;
 
-    for(c = head; c; c = c->next)
-        if(current == c) {
+    for(c=head;c;c=c->next)
+        if(c == current) {
             // "Enable" current window
-            //XSetWindowBorderWidth(disp,c->win,1);
-            XSetInputFocus(disp,c->win,RevertToParent,CurrentTime);
-            XRaiseWindow(disp,c->win);
+            XSetWindowBorderWidth(dis,c->win,1);
+            XSetWindowBorder(dis,c->win,win_focus);
+            XSetInputFocus(dis,c->win,RevertToParent,CurrentTime);
+            XRaiseWindow(dis,c->win);
         }
-
+        else
+            XSetWindowBorder(dis,c->win,win_unfocus);
 }
 
 int xsendkill(Window w){

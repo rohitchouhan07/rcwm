@@ -4,6 +4,9 @@
 
 #define MOD             Mod1Mask
 #define MASTER_SIZE     0.6
+// Colors
+#define FOCUS           "rgb:bc/57/66"
+#define UNFOCUS         "rgb:88/88/88"
 
 const char* dmenucmd[] = {"dmenu_run",NULL};
 const char* termcmd[] =  {"st",NULL};
