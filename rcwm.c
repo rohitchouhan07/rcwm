@@ -65,6 +65,7 @@ static void select_desktop(int i);
 static void	send_kill_signal(Window win);
 static void spawn(const Arg arg);
 static void tile();
+static void toggle_desktop();
 static void update_current();
 static int xsendkill(Window w);
 
@@ -429,6 +430,11 @@ void tile() {
                 }
 }
    
+}
+
+void toggle_desktop(){
+	Arg arg = {.i = last_desktop}
+	change_desktop(arg);
 }
 
 void update_current() {
