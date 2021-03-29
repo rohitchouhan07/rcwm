@@ -13,9 +13,6 @@
 #include <X11/Xproto.h>
 #include <X11/Xutil.h>
 
-
-
-
 #define CLEANMASK(mask) (mask & ~(numlockmask | LockMask))
 #define TABLENGTH(X)    (sizeof(X)/sizeof(*X))
 
@@ -86,6 +83,7 @@ static client *head;
 static client *current;
 static client *tail;
 static int master_size;
+static int last_desktop;
 
 //events array
 static void (*events[LASTEvent])(XEvent *e) = {
@@ -131,7 +129,7 @@ void change_desktop(const Arg arg) {
 	return;
 
     client *c;
-	unsigned int tmp = current_desktop;
+	//unsigned int tmp = current_desktop;
 
     // Save current "properties"
     save_desktop(current_desktop);
@@ -140,7 +138,9 @@ void change_desktop(const Arg arg) {
     if(head != NULL)
         for(c = head; c; c = c->next)
             XUnmapWindow(disp, c->win);
-
+	
+	last_desktop = current_desktop;
+    
     // Take "properties" from the new desktop
     select_desktop(arg.i);
 
@@ -495,6 +495,7 @@ int main(void){
 	// Select first dekstop by default
     const Arg arg = {.i = 1};
     current_desktop = arg.i;
+    last_desktop = current_desktop;
     change_desktop(arg);
     
     // To catch maprequest and destroynotify (if other wm running)
