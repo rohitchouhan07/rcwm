@@ -91,6 +91,7 @@ static void (*events[LASTEvent])(XEvent *e) = {
     [KeyPress]         = key_press,
     [MapRequest]       = map_request,
     [DestroyNotify]    = notify_destroy,
+    [EnterNotify]      = notify_enter,
 };
 
 //functions
@@ -148,10 +149,8 @@ void change_desktop(const Arg arg) {
 
     tile();
     update_current();
-    select_desktop(tmp);
-
-
-    select_desktop(arg.i);
+    //select_desktop(tmp);
+	select_desktop(arg.i);
 }
 
 void client_to_desktop(const Arg arg) {
@@ -307,6 +306,12 @@ void notify_destroy(XEvent *e) {
     
 }
 
+void notify_enter(XEvent *e) {
+    while(XCheckTypedEvent(d, EnterNotify, e));
+
+    for win if (c->w == e->xcrossing.window) win_focus(c);
+}
+
 void remove_window(Window w) {
     client *c;
 
@@ -424,8 +429,7 @@ void update_current() {
 
 }
 
-int
-xsendkill(Window w){
+int xsendkill(Window w){
 	int n;
 	Atom* protocols;
 	XEvent ev;
