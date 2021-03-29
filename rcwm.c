@@ -49,6 +49,7 @@ static void change_desktop(const Arg arg);
 static void client_to_desktop(const Arg arg);
 static void configure_request(XEvent *e);
 static void decrease();
+static unsigned long getcolor(const char* color);
 static void grabkeys();
 static void increase();
 static void key_press(XEvent *e);
@@ -56,7 +57,7 @@ static void kill_client();
 static void map_request(XEvent *e);
 static void next_desktop();
 static void notify_destroy(XEvent *e);
-static void notify_enter(XEvent *e) 
+//static void notify_enter(XEvent *e) 
 static void prev_desktop();
 static void prev_win();
 static void remove_window(Window w);
@@ -85,6 +86,8 @@ static client *current;
 static client *tail;
 static int master_size;
 static int last_desktop;
+static unsigned int win_focus;
+static unsigned int win_unfocus;
 
 //events array
 static void (*events[LASTEvent])(XEvent *e) = {
@@ -92,7 +95,7 @@ static void (*events[LASTEvent])(XEvent *e) = {
     [KeyPress]         = key_press,
     [MapRequest]       = map_request,
     [DestroyNotify]    = notify_destroy,
-    [EnterNotify]      = notify_enter,
+    //[EnterNotify]      = notify_enter,
 };
 
 //functions
@@ -136,10 +139,10 @@ void change_desktop(const Arg arg) {
     save_desktop(current_desktop);
     
     // Unmap all window
-    if(head != NULL)
+    if(head != NULL){
         for(c = head; c; c = c->next)
             XUnmapWindow(disp, c->win);
-	
+	}
 	last_desktop = current_desktop;
     
     // Take "properties" from the new desktop
@@ -197,6 +200,16 @@ void decrease() {
         master_size -= 10;
         tile();
     }
+}
+
+unsigned long getcolor(const char* color) {
+    XColor c;
+    Colormap map = DefaultColormap(disp,screen);
+
+    if(!XAllocNamedColor(disp,map,color,&c,&c))
+        fprintf(stderr, "Error parsing color!");
+
+    return c.pixel;
 }
 
 void grabkeys(){
@@ -308,12 +321,13 @@ void notify_destroy(XEvent *e) {
     tile();
     
 }
-// write this function
+/* write this function
 void notify_enter(XEvent *e) {
     while(XCheckTypedEvent(d, EnterNotify, e));
 
-    for win if (c->w == e->xcrossing.window) win_focus(c);
+    for win if (c->w == e->xcrossing.window) update_current();
 }
+* */
 
 void prev_desktop() {
     int tmp = current_desktop;
@@ -433,7 +447,7 @@ void tile() {
 }
 
 void toggle_desktop(){
-	Arg arg = {.i = last_desktop}
+	Arg arg = {.i = last_desktop};
 	change_desktop(arg);
 }
 
@@ -443,13 +457,13 @@ void update_current() {
     for(c=head;c;c=c->next)
         if(c == current) {
             // "Enable" current window
-            XSetWindowBorderWidth(dis,c->win,1);
-            XSetWindowBorder(dis,c->win,win_focus);
-            XSetInputFocus(dis,c->win,RevertToParent,CurrentTime);
-            XRaiseWindow(dis,c->win);
+            XSetWindowBorderWidth(disp,c->win,1);
+            XSetWindowBorder(disp,c->win,win_focus);
+            XSetInputFocus(disp,c->win,RevertToParent,CurrentTime);
+            XRaiseWindow(disp,c->win);
         }
         else
-            XSetWindowBorder(dis,c->win,win_unfocus);
+            XSetWindowBorder(disp,c->win,win_unfocus);
 }
 
 int xsendkill(Window w){
@@ -503,6 +517,10 @@ int main(void){
     current_desktop = arg.i;
     last_desktop = current_desktop;
     change_desktop(arg);
+    
+     // Colors
+    win_focus = getcolor(FOCUS);
+    win_unfocus = getcolor(UNFOCUS);
     
     // To catch maprequest and destroynotify (if other wm running)
 	//grabbing input
