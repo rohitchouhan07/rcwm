@@ -59,6 +59,7 @@ static void kill_client();
 static void map_request(XEvent *e);
 static void next_desktop();
 static void notify_destroy(XEvent *e);
+static void notify_enter(XEvent *e) 
 static void prev_win();
 static void remove_window(Window w);
 static void save_desktop(int i);
@@ -305,11 +306,36 @@ void notify_destroy(XEvent *e) {
     tile();
     
 }
-
+// write this function
 void notify_enter(XEvent *e) {
     while(XCheckTypedEvent(d, EnterNotify, e));
 
     for win if (c->w == e->xcrossing.window) win_focus(c);
+}
+
+void prev_desktop() {
+    int tmp = current_desktop;
+    if(tmp == 0)
+        tmp = 9;
+    else
+        tmp--;
+
+    Arg a = {.i = tmp};
+    change_desktop(a);
+}
+
+void prev_win() {
+    client *c;
+
+    if(current != NULL && head != NULL) {
+        if(current->prev == NULL)
+            for(c=head;c->next;c=c->next);
+        else
+            c = current->prev;
+
+        current = c;
+        update_current();
+    }
 }
 
 void remove_window(Window w) {
@@ -349,19 +375,7 @@ void remove_window(Window w) {
     }
 }
 
-void prev_win() {
-    client *c;
 
-    if(current != NULL && head != NULL) {
-        if(current->prev == NULL)
-            for(c=head;c->next;c=c->next);
-        else
-            c = current->prev;
-
-        current = c;
-        update_current();
-    }
-}
 
 void save_desktop(int i) {
     desktops[i].tail = tail;

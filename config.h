@@ -31,6 +31,7 @@ static struct key keys[] = {
     {  MOD,             XK_p,                       spawn,          	{.com = dmenucmd}},
     {  MOD,			    XK_Return,                  spawn,          	{.com = termcmd}},
     {  MOD,             XK_Right,                   next_desktop,   	{NULL}},
+    {  MOD,             XK_Left,                    prev_desktop,   	{NULL}},
     {  MOD,             XK_0,                       change_desktop, 	{.i = 0}},
     {  MOD|ShiftMask,   XK_0,                       client_to_desktop,  {.i = 0}},
     {  MOD,             XK_1,                       change_desktop, 	{.i = 1}},
