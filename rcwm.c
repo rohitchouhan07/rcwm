@@ -57,7 +57,7 @@ static void kill_client();
 static void map_request(XEvent *e);
 static void next_desktop();
 static void notify_destroy(XEvent *e);
-//static void notify_enter(XEvent *e) 
+static void notify_enter(XEvent *e); 
 static void prev_desktop();
 static void prev_win();
 static void remove_window(Window w);
@@ -68,7 +68,7 @@ static void spawn(const Arg arg);
 static void tile();
 static void toggle_desktop();
 static void update_current();
-static int xsendkill(Window w);
+static int  xsendkill(Window w);
 
 #include "config.h"
 
@@ -95,7 +95,7 @@ static void (*events[LASTEvent])(XEvent *e) = {
     [KeyPress]         = key_press,
     [MapRequest]       = map_request,
     [DestroyNotify]    = notify_destroy,
-    //[EnterNotify]      = notify_enter,
+	[EnterNotify]      = notify_enter,
 };
 
 //functions
@@ -321,13 +321,17 @@ void notify_destroy(XEvent *e) {
     tile();
     
 }
-/* write this function
-void notify_enter(XEvent *e) {
-    while(XCheckTypedEvent(d, EnterNotify, e));
 
-    for win if (c->w == e->xcrossing.window) update_current();
+void notify_enter(XEvent *e) {
+    client *c;
+    //while(XCheckTypedEvent(disp, EnterNotify, e));
+    for(c = head; c; c = c->next){
+		if(c->win == e->xcrossing.window){
+			current = c;
+			update_current();
+		}
+	}
 }
-* */
 
 void prev_desktop() {
     int tmp = current_desktop;
