@@ -114,9 +114,8 @@ void add_window(Window w) {
         c->prev = NULL;
         c->win = w;
         head = c;
-    }
-    else {
-        for(t=head;t->next;t=t->next);
+    } else {
+        for(t = head; t->next; t = t->next);
 
         c->next = NULL;
         c->prev = t;
@@ -129,8 +128,8 @@ void add_window(Window w) {
 }
 
 void change_desktop(const Arg arg) {
-   if(arg.i == current_desktop)
-	return;
+    if(arg.i == current_desktop)
+        return;
 
     client *c;
 	//unsigned int tmp = current_desktop;
@@ -139,7 +138,7 @@ void change_desktop(const Arg arg) {
     save_desktop(current_desktop);
     
     // Unmap all window
-    if(head != NULL){
+    if(head) {
         for(c = head; c; c = c->next)
             XUnmapWindow(disp, c->win);
 	}
@@ -149,7 +148,7 @@ void change_desktop(const Arg arg) {
     select_desktop(arg.i);
 
     // Map all windows
-    if(head != NULL)
+    if(head)
         for(c = head; c; c = c->next)
             XMapWindow(disp, c->win);
 
@@ -500,7 +499,7 @@ int xsendkill(Window w){
 int main(void){
 	
 	//try to open the display
-	if (!(disp = XOpenDisplay(0))){
+	if (!(disp = XOpenDisplay(0))) {
 		fprintf(stdout, "cannot open display!!\n");
 		exit(1);
 	}
@@ -539,7 +538,7 @@ int main(void){
 
     // Set up all desktop
     int i;
-    for(i=0;i<TABLENGTH(desktops);++i) {
+    for(i=0; i<TABLENGTH(desktops); ++i) {
         desktops[i].head = head;
         desktops[i].current = current;
         desktops[i].tail = tail;
